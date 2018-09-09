@@ -196,6 +196,16 @@ parser_list_filesystem.add_argument(
         help="output in JSON format to stdout")
 
 
+parser_erase_blocks = subparsers.add_parser(
+        "erase_blocks",
+        help="WARNING! Use carefully! Misuse can destroy the FS!")
+parser_erase_blocks.add_argument(
+        "--start", type=auto_int, required=True,
+        help="start block")
+parser_erase_blocks.add_argument(
+        "--count", type=auto_int, required=True,
+        help="block count")
+
 def dll_data(fname):
     return get_data('cc3200tool', os.path.join('dll', fname))
 
@@ -1099,6 +1109,10 @@ def main():
 
         if command.cmd == "list_filesystem":
             cc.list_filesystem(command.json_output)
+
+        if command.cmd == "erase_blocks":
+            cc._erase_blocks(command.start, command.count, storage_id=STORAGE_ID_SFLASH)
+            
 
     if check_fat:
         fat_info = cc.get_fat_info()  # check FAT after each write_file operation
