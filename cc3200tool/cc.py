@@ -133,6 +133,8 @@ parser_format_flash = subparsers.add_parser(
         "format_flash", help="Format the flash memory")
 parser_format_flash.add_argument(
         "-s", "--size", choices=SLFS_SIZE_MAP.keys(), default="1M")
+parser_format_flash.add_argument(
+        "--pre-erase", action="store_true")
 
 parser_erase_file = subparsers.add_parser(
         "erase_file", help="Erase a file from the SL filesystem")
@@ -628,7 +630,11 @@ class CC3200Connection(object):
     def _erase_blocks(self, start, count, storage_id=STORAGE_ID_SRAM):
         command = OPCODE_RAW_STORAGE_ERASE + \
             struct.pack(">III", storage_id, start, count)
-        self._send_packet(command, timeout=100)
+        
+        # it takes ~105 sec for 1024 blocks (could depend on the flash chip being used)
+        timeout = max(self.TIMEOUT, 2 * (105 * count / 1024))
+        log.info("Erase blocks start={} count={} timeout={}".format(start, count, timeout))
+        self._send_packet(command, timeout=timeout)
 
     def _send_chunk(self, offset, data, storage_id=STORAGE_ID_SRAM):
         command = OPCODE_RAW_STORAGE_WRITE + \
@@ -812,7 +818,7 @@ class CC3200Connection(object):
         self._try_breaking()
         self.vinfo_apps = self._get_version()
 
-    def format_slfs(self, size=None):
+    def format_slfs(self, size=None, pre_erase=False):
         if size is None:
             size = self.DEFAULT_SLFS_SIZE
 
@@ -820,6 +826,12 @@ class CC3200Connection(object):
             raise CC3200Error("invalid SLFS size")
 
         size = SLFS_SIZE_MAP[size]
+
+        if pre_erase:
+            sinfo = self._get_storage_info(storage_id=STORAGE_ID_SFLASH)
+            blks = size * 1024 / sinfo.block_size
+            log.info("Pre-erasing flash with size=%d blks=%d", size, blks)
+            self._erase_blocks(0, blks, storage_id=STORAGE_ID_SFLASH)
 
         log.info("Formatting flash with size=%s", size)
         command = OPCODE_FORMAT_FLASH \
@@ -1064,7 +1076,7 @@ def main():
 
     for command in commands:
         if command.cmd == "format_flash":
-            cc.format_slfs(command.size)
+            cc.format_slfs(command.size, command.pre_erase)
 
         if command.cmd == 'write_file':
             cc.write_file(command.local_file, command.cc_filename,
